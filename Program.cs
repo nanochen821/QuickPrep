@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 
 namespace QuickPrep
 {
@@ -7,11 +8,11 @@ namespace QuickPrep
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("=== QuickPrep 專案初始化工具 v1.0 ===");
+            Console.WriteLine("=== QuickPrep 專案初始化工具 v1.1 ===");
             
-            // 1. 讓使用者輸入專案名稱
             Console.Write("請輸入專案名稱: ");
-            string projectName = Console.ReadLine();
+            // 修正 1: 加入 ? 並處理 null 情況
+            string? projectName = Console.ReadLine();
 
             if (string.IsNullOrWhiteSpace(projectName))
             {
@@ -19,17 +20,16 @@ namespace QuickPrep
                 return;
             }
 
-            // 2. 顯示模板選單
             Console.WriteLine("\n請選擇模板類型:");
-            Console.WriteLine("[1] Web 開發 (src, css, js, index.html)");
-            Console.WriteLine("[2] Python 數據分析 (data, notebooks, src)");
-            Console.WriteLine("[3] 手動自定義 (輸入資料夾路徑，以逗號分隔)");
+            Console.WriteLine("[1] Web 開發 (src, assets/css, assets/js)");
+            Console.WriteLine("[2] Python 數據分析 (data/raw, notebooks, src)");
+            Console.WriteLine("[3] 手動自定義 (支援多層級，如: src/utils)");
             Console.Write("請輸入編號 (1-3): ");
             
-            string choice = Console.ReadLine();
-            string[] foldersToCreate = { };
+            // 修正 2: 統一處理可能的 null
+            string choice = Console.ReadLine() ?? "";
+            string[] foldersToCreate = Array.Empty<string>();
 
-            // 3. 根據編號設定要建立的資料夾
             switch (choice)
             {
                 case "1":
@@ -39,36 +39,53 @@ namespace QuickPrep
                     foldersToCreate = new[] { "data/raw", "data/processed", "notebooks", "src" };
                     break;
                 case "3":
-                    Console.Write("請輸入要建立的路徑 (例如: src, test, docs/pdf): ");
-                    string customInput = Console.ReadLine();
-                    foldersToCreate = customInput.Split(','); // 以逗號切開
+                    Console.WriteLine("\n--- 進入手動模式 ---");
+                    Console.WriteLine("請輸入完整路徑（例如：app/src/utils）");
+                    Console.WriteLine("規則：");
+                    Console.WriteLine("1. 輸入 'done' 結束。");
+                    Console.WriteLine("2. 一次輸入一條完整路徑。");
+                    Console.WriteLine("3. 程式會自動幫你補齊中間缺少的資料夾。");
+                    
+                    var customPaths = new List<string>();
+                    while (true)
+                    {
+                        Console.Write("輸入路徑 > ");
+                        string? input = Console.ReadLine();
+                        if (string.IsNullOrWhiteSpace(input) || input.ToLower() == "done") break;
+                        
+                        customPaths.Add(input.Trim());
+                    }
+                    foldersToCreate = customPaths.ToArray();
                     break;
                 default:
                     Console.WriteLine("無效選擇，程式結束。");
                     return;
             }
 
-            // 4. 執行建立邏輯
             CreateProjectStructure(projectName, foldersToCreate);
         }
 
         static void CreateProjectStructure(string root, string[] folders)
         {
-            try
+            Console.WriteLine($"\n[開始建立專案: {root}]");
+
+            // 1. 先建立根目錄
+            Directory.CreateDirectory(root);
+
+            // 2. 排序路徑（讓顯示起來更像樹狀）
+            var sortedFolders = folders.OrderBy(f => f).ToArray();
+
+            foreach (string folder in sortedFolders)
             {
-                foreach (string folder in folders)
-                {
-                    // 去除前後空白並合併路徑
-                    string path = Path.Combine(root, folder.Trim());
-                    Directory.CreateDirectory(path);
-                    Console.WriteLine($"[建立成功] {path}");
-                }
-                Console.WriteLine("\n所有任務已完成！");
+                string fullPath = Path.Combine(root, folder);
+                Directory.CreateDirectory(fullPath);
+                
+                // 讓顯示更漂亮：把 '/' 換成 ' └─ '
+                string prettyPath = folder.Replace("/", " └─ ").Replace("\\", " └─ ");
+                Console.WriteLine($"  {prettyPath}");
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[錯誤] 建立失敗: {ex.Message}");
-            }
+            
+            Console.WriteLine("\n✅ 專案結構已成功建立！");
         }
     }
 }
