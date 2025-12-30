@@ -10,36 +10,23 @@ namespace QuickPrep
     {
         static void Main(string[] args)
         {
-            // 讓視窗一開始乾乾淨淨
+            // 設定支援 UTF8 編碼以顯示特殊符號
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.Clear();
-            
-            // --- 視覺標題 ---
+
+            // --- 程式標題介面 ---
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine(@"
     ╔══════════════════════════════════════════════════════╗
-    ║                 QUICK PREP v2.5                      ║
+    ║                 QUICK PREP v2.8                      ║
     ║         Professional Project Initializer             ║
     ╚══════════════════════════════════════════════════════╝");
             Console.ResetColor();
 
-            // --- 1. 讀取模板資料 ---
-            string jsonPath = "templates.json";
-            List<ProjectTemplate> templates = new List<ProjectTemplate>();
+            // --- 1. 模板資料加載 (支援多路徑讀取與合併) ---
+            List<ProjectTemplate> templates = LoadTemplates();
 
-            if (File.Exists(jsonPath))
-            {
-                string jsonString = File.ReadAllText(jsonPath);
-                templates = JsonSerializer.Deserialize<List<ProjectTemplate>>(jsonString) ?? new List<ProjectTemplate>();
-            }
-            else
-            {
-                templates.Add(new ProjectTemplate { Name = "Web 開發", Folders = new[] { "src", "wwwroot", "docs" } });
-                string defaultJson = JsonSerializer.Serialize(templates, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(jsonPath, defaultJson);
-                PrintSystemMsg("已建立預設 templates.json");
-            }
-
-            // --- 2. 詢問專案資訊 ---
+            // --- 2. 專案基本設定 ---
             PrintHeader("1. 專案路徑設定");
             
             Console.Write("❯ 專案名稱: ");
@@ -47,7 +34,7 @@ namespace QuickPrep
             string projectName = Console.ReadLine() ?? "NewProject";
             Console.ResetColor();
 
-            Console.Write("❯ 目標目錄 (Enter 為當前, 或輸入 'desktop'): ");
+            Console.Write("❯ 目標目錄 (Enter 為當前路徑, 或輸入 'desktop'): ");
             Console.ForegroundColor = ConsoleColor.Yellow;
             string? inputDir = Console.ReadLine();
             Console.ResetColor();
@@ -58,15 +45,14 @@ namespace QuickPrep
 
             string finalProjectPath = Path.Combine(targetDir, projectName);
 
-            // --- 3. 動態顯示模板選單 ---
+            // --- 3. 模板選單顯示 ---
             PrintHeader("2. 選擇開發模板");
             for (int i = 0; i < templates.Count; i++)
             {
-                // 使用 PadRight 讓文字對齊，看起來更整齊
                 string folderPreview = string.Join(", ", templates[i].Folders.Take(2));
-                Console.WriteLine($"  [{i + 1}] {templates[i].Name.PadRight(20)} │ (範例: {folderPreview}...)");
+                Console.WriteLine($"  [{i + 1}] {templates[i].Name.PadRight(25)} │ (預覽: {folderPreview}...)");
             }
-            Console.WriteLine($"  [{templates.Count + 1}] 手動自定義專案");
+            Console.WriteLine($"  [{templates.Count + 1}] 手動自定義結構");
             
             Console.Write($"\n❯ 請輸入編號 (1-{templates.Count + 1}): ");
             string choice = Console.ReadLine() ?? "";
@@ -82,23 +68,111 @@ namespace QuickPrep
                 Console.ResetColor();
             }
 
-            // --- 4. 手動補充邏輯 ---
-            PrintHeader("3. 補充資料夾結構");
-            Console.WriteLine("提示: 輸入路徑 (如 src/utils) 或按 'done' 結束。");
+            // --- 4. 擴充結構輸入 (支援空格與大括號語法) ---
+            PrintHeader("3. 追加資料夾結構");
+            Console.WriteLine("提示: 支援空格分隔 (如: src docs) 或 大括號擴展 (如: assets/{css,js})");
             
             while (true)
             {
-                Console.Write("  + 追加路徑 > ");
+                Console.Write("  + 追加路徑 (輸入 'done' 結束) > ");
                 string? input = Console.ReadLine();
                 if (string.IsNullOrWhiteSpace(input) || input.ToLower() == "done") break;
-                foldersToCreate.Add(input.Trim());
+
+                string[] segments = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var seg in segments)
+                {
+                    if (seg.Contains("{") && seg.Contains("}"))
+                        foldersToCreate.AddRange(ExpandBraces(seg));
+                    else
+                        foldersToCreate.Add(seg.Trim());
+                }
             }
 
-            // --- 5. 執行建立 ---
-            CreateProjectStructure(finalProjectPath, foldersToCreate.ToArray(), finalTemplateName);
+            // --- 5. 最終確認與預覽 ---
+            PrintHeader("4. 確認建構清單");
+            var finalFolders = foldersToCreate.Distinct().OrderBy(f => f).ToList();
+            
+            if (finalFolders.Count > 0)
+            {
+                foreach (var folder in finalFolders)
+                    Console.WriteLine($"  [待建立] {folder}");
+                
+                Console.WriteLine($"\n總計: {finalFolders.Count} 個資料夾。");
+                Console.Write("\n確認請按 Enter 開始執行 (或按 Ctrl+C 放棄): ");
+                Console.ReadLine();
+                
+                // --- 6. 執行建立程序 ---
+                CreateProjectStructure(finalProjectPath, finalFolders.ToArray(), finalTemplateName);
+            }
+            else
+            {
+                Console.WriteLine("  ⚠️ 未選取任何結構，操作已取消。");
+            }
+
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine("\n程序執行完畢，按任意鍵關閉視窗...");
+            Console.ResetColor();
+            Console.ReadKey();
         }
 
-        // --- 輔助美化方法 ---
+        // 讀取多個來源的模板並合併
+        static List<ProjectTemplate> LoadTemplates()
+        {
+            List<ProjectTemplate> templates = new List<ProjectTemplate>();
+            string exeDir = AppContext.BaseDirectory;
+            string currentDir = Environment.CurrentDirectory;
+
+            string[] paths = { Path.Combine(exeDir, "templates.json"), Path.Combine(currentDir, "templates.json") };
+
+            foreach (string path in paths.Distinct())
+            {
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        string json = File.ReadAllText(path);
+                        var loaded = JsonSerializer.Deserialize<List<ProjectTemplate>>(json);
+                        if (loaded != null)
+                        {
+                            foreach (var t in loaded)
+                            {
+                                if (!templates.Any(e => e.Name == t.Name)) templates.Add(t);
+                            }
+                        }
+                    }
+                    catch (Exception ex) { Console.WriteLine($"[系統] 無法讀取 {path}: {ex.Message}"); }
+                }
+            }
+
+            // 內建保險模板
+            if (templates.Count == 0)
+            {
+                templates.Add(new ProjectTemplate { Name = "Modern Web Frontend", Folders = new[] { "src/components", "src/assets", "public" } });
+                templates.Add(new ProjectTemplate { Name = "Python Data Science", Folders = new[] { "data", "notebooks", "src" } });
+            }
+            return templates;
+        }
+
+        // 解析大括號語法: assets/{css,js} -> assets/css, assets/js
+        static List<string> ExpandBraces(string input)
+        {
+            var results = new List<string>();
+            try 
+            {
+                int start = input.IndexOf('{');
+                int end = input.IndexOf('}');
+                if (start == -1 || end == -1 || end < start) { results.Add(input); return results; }
+
+                string prefix = input.Substring(0, start);
+                string suffix = input.Substring(end + 1);
+                string[] parts = input.Substring(start + 1, end - start - 1).Split(',');
+
+                foreach (var p in parts) results.Add($"{prefix}{p.Trim()}{suffix}");
+            }
+            catch { results.Add(input); }
+            return results;
+        }
+
         static void PrintHeader(string title)
         {
             Console.WriteLine();
@@ -107,63 +181,52 @@ namespace QuickPrep
             Console.ResetColor();
         }
 
-        static void PrintSystemMsg(string msg)
-        {
-            Console.ForegroundColor = ConsoleColor.DarkGray;
-            Console.WriteLine($"[系統] {msg}");
-            Console.ResetColor();
-        }
-
         static void CreateProjectStructure(string root, string[] folders, string templateName)
         {
-            PrintHeader("4. 正在建構專案...");
-            Console.WriteLine($"📍 目標路徑: {root}\n");
+            PrintHeader("5. 執行建構作業");
+            Console.WriteLine($"📍 根目錄: {root}\n");
             
             Directory.CreateDirectory(root);
 
-            var sortedFolders = folders.OrderBy(f => f).ToArray();
-            foreach (string folder in sortedFolders)
+            foreach (string folder in folders)
             {
                 string fullPath = Path.Combine(root, folder);
                 Directory.CreateDirectory(fullPath);
                 File.WriteAllText(Path.Combine(fullPath, ".gitkeep"), "");
 
-                // 美化輸出的樹狀符號
-                string prettyPath = folder.Replace("/", " ── ").Replace("\\", " ── ");
                 Console.ForegroundColor = ConsoleColor.DarkGray;
                 Console.Write("  [DIR] ");
                 Console.ResetColor();
-                Console.WriteLine(prettyPath);
+                Console.WriteLine(folder.Replace("/", " ── "));
             }
 
-            GenerateReadme(root, templateName, sortedFolders);
-            
+            GenerateReadme(root, templateName, folders);
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("\n⭐ 專案初始化成功！");
-            Console.WriteLine("--------------------------------------------------");
+            Console.WriteLine("\n⭐ 專案初始化作業完成。");
             Console.ResetColor();
-            Console.WriteLine("現在你可以開啟 VS Code 或其他編輯器開始開發了。\n");
         }
 
         static void GenerateReadme(string root, string templateName, string[] folders)
         {
             string filePath = Path.Combine(root, "README.md");
-            string projectName = Path.GetFileName(root);
-            
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
-            sb.AppendLine($"# {projectName}");
-            sb.AppendLine($"\n> 本專案由 **QuickPrep** 自動初始化於 {DateTime.Now:yyyy-MM-dd HH:mm}。");
-            sb.AppendLine($"\n## 📋 專案模板: {templateName}");
-            sb.AppendLine("\n### 📂 目錄結構");
-            sb.AppendLine("```text");
+            sb.AppendLine($"# {Path.GetFileName(root)}");
+            sb.AppendLine($"\n> 初始化時間: {DateTime.Now:yyyy-MM-dd HH:mm}");
+            sb.AppendLine($"\n## 📋 套用模板: {templateName}");
+            sb.AppendLine("\n### 📂 目錄結構\n```text");
             foreach (var folder in folders) sb.AppendLine(folder);
-            sb.AppendLine("```");
-            sb.AppendLine("\n## 🚀 快速開始\n1. 確認環境已就緒。\n2. 於 `src` 展開開發。");
-            sb.AppendLine("\n---\n*Generated by QuickPrep*");
+            sb.AppendLine("```\n\n---\n*Generated by QuickPrep*");
 
             File.WriteAllText(filePath, sb.ToString());
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             Console.WriteLine("  [FILE] README.md (已產生)");
+            Console.ResetColor();
+        }
+
+        static void PrintSystemMsg(string msg)
+        {
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine($"[系統] {msg}");
             Console.ResetColor();
         }
     }
