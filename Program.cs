@@ -8,10 +8,10 @@ namespace QuickPrep
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("=== QuickPrep 專案初始化工具 v1.1 ===");
-            
+            Console.WriteLine("=== QuickPrep 專案初始化工具 v1.2 ===");
+    
+            // 1. 先問專案名稱
             Console.Write("請輸入專案名稱: ");
-            // 修正 1: 加入 ? 並處理 null 情況
             string? projectName = Console.ReadLine();
 
             if (string.IsNullOrWhiteSpace(projectName))
@@ -19,6 +19,30 @@ namespace QuickPrep
                 Console.WriteLine("錯誤: 名稱不可為空。");
                 return;
             }
+
+            // 2. 再問目標目錄
+            Console.Write("請輸入目標目錄 (直接按 Enter 代表當前目錄，或輸入 'desktop' 自動定位到桌面): ");
+            string? inputDir = Console.ReadLine();
+
+            string targetDir;
+
+            if (string.IsNullOrWhiteSpace(inputDir)) 
+            {
+                targetDir = Environment.CurrentDirectory; 
+            }
+            else if (inputDir.Trim().ToLower() == "desktop")
+            {
+                // 這行是關鍵！它會自動抓到真正屬於你的桌面路徑：C:\Users\XXX\Desktop
+                targetDir = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            }
+            else
+            {
+                // 如果你輸入 C:\abc，它會確保這是一個完整的絕對路徑
+                targetDir = Path.GetFullPath(inputDir);
+            }
+
+            // 3. 組合出最終路徑
+            string finalProjectPath = Path.GetFullPath(Path.Combine(targetDir, projectName));
 
             Console.WriteLine("\n請選擇模板類型:");
             Console.WriteLine("[1] Web 開發 (src, assets/css, assets/js)");
@@ -62,7 +86,7 @@ namespace QuickPrep
                     return;
             }
 
-            CreateProjectStructure(projectName, foldersToCreate);
+            CreateProjectStructure(finalProjectPath, foldersToCreate);
         }
 
         static void CreateProjectStructure(string root, string[] folders)
