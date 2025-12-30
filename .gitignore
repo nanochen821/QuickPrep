@@ -1,0 +1,8 @@
+# .gitignore 內容
+[Bb]in/
+[Oo]bj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln.docstates
