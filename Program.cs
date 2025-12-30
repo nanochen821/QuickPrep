@@ -1,6 +1,8 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic; // 為了使用 List
+using System.Text.Json;           // 為了解析 JSON
 
 namespace QuickPrep
 {
@@ -8,85 +10,71 @@ namespace QuickPrep
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("=== QuickPrep 專案初始化工具 v1.2 ===");
-    
-            // 1. 先問專案名稱
-            Console.Write("請輸入專案名稱: ");
-            string? projectName = Console.ReadLine();
+            Console.WriteLine("=== QuickPrep 專案初始化工具 v2.0 (JSON 版) ===");
 
-            if (string.IsNullOrWhiteSpace(projectName))
+            // --- 1. 讀取模板資料 ---
+            string jsonPath = "templates.json";
+            List<ProjectTemplate> templates = new List<ProjectTemplate>();
+
+            if (File.Exists(jsonPath))
             {
-                Console.WriteLine("錯誤: 名稱不可為空。");
-                return;
-            }
-
-            // 2. 再問目標目錄
-            Console.Write("請輸入目標目錄 (直接按 Enter 代表當前目錄，或輸入 'desktop' 自動定位到桌面): ");
-            string? inputDir = Console.ReadLine();
-
-            string targetDir;
-
-            if (string.IsNullOrWhiteSpace(inputDir)) 
-            {
-                targetDir = Environment.CurrentDirectory; 
-            }
-            else if (inputDir.Trim().ToLower() == "desktop")
-            {
-                // 這行是關鍵！它會自動抓到真正屬於你的桌面路徑：C:\Users\XXX\Desktop
-                targetDir = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                string jsonString = File.ReadAllText(jsonPath);
+                templates = JsonSerializer.Deserialize<List<ProjectTemplate>>(jsonString) ?? new List<ProjectTemplate>();
             }
             else
             {
-                // 如果你輸入 C:\abc，它會確保這是一個完整的絕對路徑
-                targetDir = Path.GetFullPath(inputDir);
+                // 如果檔案不存在，建立一個預設的範例給使用者參考
+                templates.Add(new ProjectTemplate { Name = "Web 開發", Folders = new[] { "src", "wwwroot", "docs" } });
+                string defaultJson = JsonSerializer.Serialize(templates, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(jsonPath, defaultJson);
+                Console.WriteLine("[系統] 已為您建立預設 templates.json，您可以自行修改。");
             }
 
-            // 3. 組合出最終路徑
-            string finalProjectPath = Path.GetFullPath(Path.Combine(targetDir, projectName));
+            // --- 2. 詢問專案資訊 (沿用你的路徑邏輯) ---
+            Console.Write("請輸入專案名稱: ");
+            string projectName = Console.ReadLine() ?? "NewProject";
 
+            Console.Write("請輸入目標目錄 (直接按 Enter 代表當前目錄，或輸入 'desktop'): ");
+            string? inputDir = Console.ReadLine();
+            string targetDir = inputDir?.ToLower() == "desktop" 
+                ? Environment.GetFolderPath(Environment.SpecialFolder.Desktop) 
+                : (string.IsNullOrWhiteSpace(inputDir) ? Environment.CurrentDirectory : Path.GetFullPath(inputDir));
+
+            string finalProjectPath = Path.Combine(targetDir, projectName);
+
+            // --- 3. 動態顯示模板選單 ---
             Console.WriteLine("\n請選擇模板類型:");
-            Console.WriteLine("[1] Web 開發 (src, assets/css, assets/js)");
-            Console.WriteLine("[2] Python 數據分析 (data/raw, notebooks, src)");
-            Console.WriteLine("[3] 手動自定義 (支援多層級，如: src/utils)");
-            Console.Write("請輸入編號 (1-3): ");
-            
-            // 修正 2: 統一處理可能的 null
-            string choice = Console.ReadLine() ?? "";
-            string[] foldersToCreate = Array.Empty<string>();
-
-            switch (choice)
+            for (int i = 0; i < templates.Count; i++)
             {
-                case "1":
-                    foldersToCreate = new[] { "src", "assets/css", "assets/js", "docs" };
-                    break;
-                case "2":
-                    foldersToCreate = new[] { "data/raw", "data/processed", "notebooks", "src" };
-                    break;
-                case "3":
-                    Console.WriteLine("\n--- 進入手動模式 ---");
-                    Console.WriteLine("請輸入完整路徑（例如：app/src/utils）");
-                    Console.WriteLine("規則：");
-                    Console.WriteLine("1. 輸入 'done' 結束。");
-                    Console.WriteLine("2. 一次輸入一條完整路徑。");
-                    Console.WriteLine("3. 程式會自動幫你補齊中間缺少的資料夾。");
-                    
-                    var customPaths = new List<string>();
-                    while (true)
-                    {
-                        Console.Write("輸入路徑 > ");
-                        string? input = Console.ReadLine();
-                        if (string.IsNullOrWhiteSpace(input) || input.ToLower() == "done") break;
-                        
-                        customPaths.Add(input.Trim());
-                    }
-                    foldersToCreate = customPaths.ToArray();
-                    break;
-                default:
-                    Console.WriteLine("無效選擇，程式結束。");
-                    return;
+                Console.WriteLine($"[{i + 1}] {templates[i].Name}");
+            }
+            Console.WriteLine($"[{templates.Count + 1}] 完全手動自定義");
+            Console.Write($"請輸入編號 (1-{templates.Count + 1}): ");
+
+            string choice = Console.ReadLine() ?? "";
+            List<string> foldersToCreate = new List<string>();
+
+            if (int.TryParse(choice, out int index) && index >= 1 && index <= templates.Count)
+            {
+                // 使用者選了某個 JSON 模板
+                foldersToCreate.AddRange(templates[index - 1].Folders);
+                Console.WriteLine($"已載入模板: {templates[index - 1].Name}");
             }
 
-            CreateProjectStructure(finalProjectPath, foldersToCreate);
+            // --- 4. 手動補充邏輯 (你的第 3 個願望) ---
+            Console.WriteLine("\n--- 補充資料夾 (手動模式) ---");
+            Console.WriteLine("請輸入額外想建立的路徑 (例如: src/utils)，輸入 'done' 或直接 Enter 結束：");
+            
+            while (true)
+            {
+                Console.Write("追加路徑 > ");
+                string? input = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(input) || input.ToLower() == "done") break;
+                foldersToCreate.Add(input.Trim());
+            }
+
+            // --- 5. 執行建立 ---
+            CreateProjectStructure(finalProjectPath, foldersToCreate.ToArray());
         }
 
         static void CreateProjectStructure(string root, string[] folders)
@@ -112,4 +100,10 @@ namespace QuickPrep
             Console.WriteLine("\n✅ 專案結構已成功建立！");
         }
     }
+}
+
+public class ProjectTemplate
+{
+    public string Name { get; set; } = "";
+    public string[] Folders { get; set; } = Array.Empty<string>();
 }

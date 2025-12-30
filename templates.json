@@ -1,0 +1,26 @@
+[
+  {
+    "Name": "Modern Web Frontend (React/Vue)",
+    "Folders": ["src/components", "src/hooks", "src/assets/styles", "src/services", "public", "docs"]
+  },
+  {
+    "Name": "Backend API (Node/Go/Python)",
+    "Folders": ["src/controllers", "src/models", "src/routes", "src/middleware", "src/config", "tests", "docs"]
+  },
+  {
+    "Name": "Python Data Science",
+    "Folders": ["data/raw", "data/processed", "notebooks", "src/features", "src/models", "reports/figures"]
+  },
+  {
+    "Name": "C#/.NET Solution",
+    "Folders": ["src/Project.Core", "src/Project.Infrastructure", "src/Project.WebAPI", "tests", "docs/images"]
+  },
+  {
+    "Name": "General Java (Maven/Gradle)",
+    "Folders": ["src/main/java", "src/main/resources", "src/test/java", "target", "docs"]
+  },
+  {
+    "Name": "Mobile App (Flutter/React Native)",
+    "Folders": ["lib/models", "lib/views", "lib/widgets", "lib/services", "assets/images", "assets/fonts", "test"]
+  }
+]
